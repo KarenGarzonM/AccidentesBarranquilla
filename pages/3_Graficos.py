@@ -66,14 +66,13 @@ filtros = {
     "clase": tipos_sel if tipos_sel else None,
 }
 
-# Layout base para gráficos
+# Layout base para gráficos — sin height para evitar conflictos al sobrescribir
 LAYOUT = dict(
     paper_bgcolor="rgba(0,0,0,0)",
     plot_bgcolor="rgba(0,0,0,0)",
     font_color="#8b949e",
     coloraxis_showscale=False,
     margin=dict(t=20, b=20),
-    height=320,
 )
 
 # ------------------------------------------------------------------ #
@@ -112,7 +111,7 @@ with r1c1:
                      color_continuous_scale=["#21262d", "#f0883e"],
                      labels={"total": "Accidentes"}, text="total")
         fig.update_traces(textposition="outside", textfont_color="#e6edf3")
-        fig.update_layout(**LAYOUT,
+        fig.update_layout(**LAYOUT, height=320,
                           xaxis=dict(showgrid=False, color="#8b949e"),
                           yaxis=dict(showgrid=True, gridcolor="#21262d", color="#8b949e"))
         st.plotly_chart(fig, use_container_width=True)
@@ -127,7 +126,7 @@ with r1c2:
                       labels={"total": "Accidentes"},
                       color_discrete_sequence=["#f0883e"])
         fig.update_traces(line_width=3, marker=dict(size=8, color="#d29922"))
-        fig.update_layout(**LAYOUT,
+        fig.update_layout(**LAYOUT, height=320,
                           xaxis=dict(showgrid=False, color="#8b949e", tickangle=-30),
                           yaxis=dict(showgrid=True, gridcolor="#21262d", color="#8b949e"))
         st.plotly_chart(fig, use_container_width=True)

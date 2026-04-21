@@ -5,7 +5,7 @@ usando APScheduler. Se importa desde app.py al arrancar Streamlit.
 """
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from etl.extractor import extraer_todos_los_datos
+from extractor import extraer_todos_los_datos
 
 _scheduler = None
 

@@ -1,6 +1,7 @@
 """
 pages/2_MongoDB.py
 Página de MongoDB: explora los documentos almacenados en Atlas.
+Paginación y filtros reales en el servidor (no sobre la página actual).
 """
 
 import streamlit as st
@@ -33,7 +34,6 @@ def obtener_dao():
 
 try:
     dao = obtener_dao()
-    conectado = True
 except Exception as e:
     st.error(f"Error de conexión a MongoDB: {e}")
     st.stop()
@@ -42,10 +42,7 @@ except Exception as e:
 #  ENCABEZADO                                                          #
 # ------------------------------------------------------------------ #
 st.markdown("## 🍃 MongoDB Atlas — Colección de accidentes")
-st.markdown(
-    "<span class='mongo-badge'>● Conectado a MongoDB Atlas</span>",
-    unsafe_allow_html=True,
-)
+st.markdown("<span class='mongo-badge'>● Conectado a MongoDB Atlas</span>", unsafe_allow_html=True)
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ------------------------------------------------------------------ #
@@ -67,11 +64,8 @@ c4.metric("Total muertos acum.", f"{resumen['total_muertos']:,}")
 st.markdown("---")
 
 # ------------------------------------------------------------------ #
-#  EXPLORADOR DE DOCUMENTOS                                            #
+#  FILTROS EN SIDEBAR                                                  #
 # ------------------------------------------------------------------ #
-st.markdown("### 🔎 Explorador de documentos")
-
-# Filtros en sidebar
 with st.sidebar:
     st.markdown("## 🔍 Filtros MongoDB")
     st.markdown("---")
@@ -84,39 +78,49 @@ with st.sidebar:
 
     por_pagina = st.select_slider("Registros por página", options=[25, 50, 100, 200], value=50)
 
-# Paginación
-total_docs = resumen["total_documentos"]
-total_paginas = max(1, (total_docs // por_pagina) + (1 if total_docs % por_pagina else 0))
+# ------------------------------------------------------------------ #
+#  EXPLORADOR DE DOCUMENTOS                                            #
+# ------------------------------------------------------------------ #
+st.markdown("### 🔎 Explorador de documentos")
+
+# Contar con filtros reales en Mongo para calcular la paginación correcta
+total_filtrado = dao.contar_con_filtros(
+    anio=anio_sel if anio_sel != "Todos" else None,
+    gravedad=gravedad_sel if gravedad_sel != "Todas" else None,
+)
+total_paginas = max(1, (total_filtrado + por_pagina - 1) // por_pagina)
 
 col_pag1, col_pag2, col_pag3 = st.columns([1, 2, 1])
 with col_pag2:
     pagina = st.number_input(
         f"Página (1 – {total_paginas:,})",
-        min_value=1, max_value=total_paginas, value=1, step=1
+        min_value=1,
+        max_value=total_paginas,
+        value=1,
+        step=1,
     ) - 1
 
-# Obtener documentos
+# Obtener documentos con filtros reales aplicados en Mongo
 with st.spinner("Cargando documentos..."):
-    documentos = dao.obtener_documentos_paginados(pagina=pagina, por_pagina=por_pagina)
+    documentos = dao.obtener_documentos_paginados(
+        pagina=pagina,
+        por_pagina=por_pagina,
+        anio=anio_sel if anio_sel != "Todos" else None,
+        gravedad=gravedad_sel if gravedad_sel != "Todas" else None,
+    )
 
 if documentos:
     df = pd.DataFrame(documentos)
 
-    # Aplicar filtros locales (sobre la página actual)
-    if anio_sel != "Todos":
-        df = df[df["a_o_accidente"].astype(str) == anio_sel]
-    if gravedad_sel != "Todas":
-        df = df[df["gravedad_accidente"] == gravedad_sel]
-
     st.markdown(
         f"<small style='color:#8b949e'>Mostrando {len(df)} documentos · "
         f"Página {pagina + 1} de {total_paginas:,} · "
-        f"Total en colección: {total_docs:,}</small>",
+        f"Total con filtros: {total_filtrado:,} · "
+        f"Total en colección: {resumen['total_documentos']:,}</small>",
         unsafe_allow_html=True,
     )
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Renombrar columnas para mejor legibilidad
     rename_map = {
         "fecha_accidente": "Fecha",
         "hora_accidente": "Hora",
@@ -132,7 +136,6 @@ if documentos:
     }
     df_display = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
 
-    # Formatear fecha
     if "Fecha" in df_display.columns:
         df_display["Fecha"] = df_display["Fecha"].astype(str).str[:10]
 
@@ -149,7 +152,6 @@ if documentos:
         }
     )
 
-    # Descarga como CSV
     st.markdown("<br>", unsafe_allow_html=True)
     csv = df_display.to_csv(index=False).encode("utf-8")
     st.download_button(
@@ -161,9 +163,8 @@ if documentos:
 else:
     st.info("No hay documentos que coincidan con los filtros.")
 
-st.markdown("<br>")
 st.markdown(
     "<small style='color:#8b949e'>Base de datos: MongoDB Atlas · Colección: accidentes · "
-    "Ordenado por fecha descendente</small>",
+    "Ordenado por fecha descendente · Filtros aplicados en el servidor</small>",
     unsafe_allow_html=True,
 )

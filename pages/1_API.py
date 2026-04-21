@@ -1,14 +1,14 @@
 """
 pages/1_API.py
 Página de API: muestra el JSON de datos.gov.co como tabla
-y permite cargar los datos a MongoDB.
+y permite recargar los datos en MongoDB (borra todo y vuelve a insertar).
 """
 
 import streamlit as st
 import requests
 import pandas as pd
 from mongo_dao import MongoDAO
-from extractor import extraer_todos_los_datos
+from extractor import recargar_todos_los_datos
 from scheduler import iniciar_scheduler
 
 st.set_page_config(page_title="API · Accidentalidad", page_icon="📡", layout="wide")
@@ -27,6 +27,8 @@ st.markdown("""
     .info-box { background: #161b22; border: 1px solid #30363d; border-left: 4px solid #79c0ff; border-radius: 10px; padding: 1rem 1.5rem; margin-bottom: 1rem; }
     .info-box p { color: #8b949e; margin: 0; font-size: 0.9rem; }
     .info-box a { color: #79c0ff; }
+    .warning-box { background: #2d1f0e; border: 1px solid #f0883e; border-radius: 10px; padding: 1rem 1.5rem; margin-bottom: 1rem; }
+    .warning-box p { color: #f0883e; margin: 0; font-size: 0.9rem; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -84,18 +86,14 @@ if consultar or "api_preview" in st.session_state:
     if datos:
         df = pd.DataFrame(datos)
 
-        # Métricas rápidas
         m1, m2, m3 = st.columns(3)
         m1.metric("Registros obtenidos", len(df))
         m2.metric("Columnas", len(df.columns))
         m3.metric("Fuente", "datos.gov.co")
 
         st.markdown("<br>", unsafe_allow_html=True)
-
-        # Tabla
         st.markdown("#### 📋 Datos en tabla")
 
-        # Columnas relevantes primero
         cols_orden = [
             "fecha_accidente", "hora_accidente", "gravedad_accidente",
             "clase_accidente", "sitio_exacto_accidente",
@@ -128,30 +126,44 @@ if consultar or "api_preview" in st.session_state:
 st.markdown("---")
 
 # ------------------------------------------------------------------ #
-#  CARGA A MONGODB                                                     #
+#  RECARGA COMPLETA EN MONGODB                                         #
 # ------------------------------------------------------------------ #
-st.markdown("### 🍃 Cargar datos a MongoDB Atlas")
-st.markdown(
-    "<p style='color:#8b949e;font-size:0.9rem;'>Este proceso descarga <strong style='color:#e6edf3'>todos</strong> "
-    "los registros disponibles en la API (con paginación) y los guarda en MongoDB usando upsert "
-    "— no genera duplicados si ya existen.</p>",
-    unsafe_allow_html=True,
-)
+st.markdown("### 🍃 Recargar datos en MongoDB Atlas")
+
+st.markdown("""
+<div class="warning-box">
+    <p>
+        ⚠️ <strong>Este proceso elimina TODOS los documentos existentes</strong> en MongoDB
+        y vuelve a insertar los datos frescos de la API. Úsalo para sincronizar completamente
+        sin duplicados. La operación puede tardar varios minutos.
+    </p>
+</div>
+""", unsafe_allow_html=True)
 
 col_carga1, col_carga2 = st.columns([1, 2])
 with col_carga1:
-    cargar = st.button("⬆️ Cargar todos los datos a MongoDB", use_container_width=True)
+    cargar = st.button("🔄 Eliminar y recargar desde API", use_container_width=True)
 
 if cargar:
-    barra = st.progress(0, text="Iniciando extracción...")
-    with st.spinner("Descargando y guardando en MongoDB..."):
-        try:
-            total = extraer_todos_los_datos()
-            barra.progress(100, text="¡Completado!")
-            st.success(f"✅ **{total:,} registros** sincronizados en MongoDB Atlas.")
-            st.balloons()
-        except Exception as e:
-            st.error(f"Error durante la carga: {e}")
+    barra = st.progress(0, text="Descargando datos de la API...")
+    estado = st.empty()
 
-st.markdown("<br>")
-st.markdown("<small style='color:#8b949e'>La actualización automática ocurre cada 24 horas via APScheduler.</small>", unsafe_allow_html=True)
+    def actualizar_progreso(total_descargados: int):
+        barra.progress(min(int((total_descargados / 20000) * 90), 90),
+                       text=f"Descargados {total_descargados:,} registros...")
+
+    try:
+        estado.info("⬇️ Paso 1/3 — Descargando todos los registros de la API...")
+        total = recargar_todos_los_datos(callback=actualizar_progreso)
+        barra.progress(100, text="¡Completado!")
+        estado.empty()
+        st.success(f"✅ **{total:,} registros** cargados en MongoDB Atlas. Colección actualizada desde cero.")
+        st.balloons()
+    except Exception as e:
+        barra.empty()
+        st.error(f"Error durante la recarga: {e}")
+
+st.markdown(
+    "<small style='color:#8b949e'>La actualización automática ocurre cada 24 horas via APScheduler (modo incremental).</small>",
+    unsafe_allow_html=True,
+)

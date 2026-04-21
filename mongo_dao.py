@@ -47,6 +47,19 @@ class MongoDAO:
         except BulkWriteError as e:
             print(f"Advertencia en bulk_write: {e.details.get('nInserted', 0)} insertados.")
 
+    def eliminar_todos(self) -> int:
+        """Elimina todos los documentos de la colección. Retorna el conteo eliminado."""
+        resultado = self._col.delete_many({})
+        return resultado.deleted_count
+
+    def insertar_muchos(self, registros: list) -> None:
+        """Inserción directa sin upsert (usar tras eliminar_todos)."""
+        if registros:
+            try:
+                self._col.insert_many(registros, ordered=False)
+            except Exception as e:
+                print(f"Advertencia en insert_many: {e}")
+
     # ------------------------------------------------------------------ #
     #  LECTURA GENERAL                                                     #
     # ------------------------------------------------------------------ #
@@ -64,7 +77,8 @@ class MongoDAO:
     def obtener_clases(self) -> list:
         return sorted([c for c in self._col.distinct("clase_accidente") if c])
 
-    def obtener_documentos_paginados(self, pagina: int = 0, por_pagina: int = 50) -> list:
+    def obtener_documentos_paginados(self, pagina: int = 0, por_pagina: int = 50,
+                                      anio: str = None, gravedad: str = None) -> list:
         """Retorna documentos crudos de Mongo para la página de MongoDB."""
         campos = {
             "_id": 0,
@@ -80,23 +94,74 @@ class MongoDAO:
             "mes_accidente": 1,
             "dia_accidente": 1,
         }
+
+        # Filtros reales en Mongo
+        query = {}
+        if anio and anio != "Todos":
+            try:
+                query["a_o_accidente"] = int(anio)
+            except ValueError:
+                pass
+        if gravedad and gravedad != "Todas":
+            query["gravedad_accidente"] = gravedad
+
         cursor = (
-            self._col.find({}, campos)
+            self._col.find(query, campos)
             .sort("fecha_accidente", -1)
             .skip(pagina * por_pagina)
             .limit(por_pagina)
         )
         return list(cursor)
 
+    def contar_con_filtros(self, anio: str = None, gravedad: str = None) -> int:
+        """Cuenta documentos aplicando los filtros de la página MongoDB."""
+        query = {}
+        if anio and anio != "Todos":
+            try:
+                query["a_o_accidente"] = int(anio)
+            except ValueError:
+                pass
+        if gravedad and gravedad != "Todas":
+            query["gravedad_accidente"] = gravedad
+        return self._col.count_documents(query)
+
     def resumen_coleccion(self) -> dict:
-        """Estadísticas rápidas para mostrar en la página de MongoDB."""
+        """Estadísticas rápidas para mostrar en la página principal y MongoDB."""
         total = self.contar_total()
         anios = self.obtener_anios_disponibles()
+
+        # Convertir a int en la aggregation para evitar problemas con strings
         pipeline_heridos = [
-            {"$group": {"_id": None, "total": {"$sum": "$cant_heridos_en_sitio_accidente"}}}
+            {
+                "$group": {
+                    "_id": None,
+                    "total": {
+                        "$sum": {
+                            "$cond": [
+                                {"$isNumber": "$cant_heridos_en_sitio_accidente"},
+                                "$cant_heridos_en_sitio_accidente",
+                                0
+                            ]
+                        }
+                    }
+                }
+            }
         ]
         pipeline_muertos = [
-            {"$group": {"_id": None, "total": {"$sum": "$cant_muertos_en_sitio_accidente"}}}
+            {
+                "$group": {
+                    "_id": None,
+                    "total": {
+                        "$sum": {
+                            "$cond": [
+                                {"$isNumber": "$cant_muertos_en_sitio_accidente"},
+                                "$cant_muertos_en_sitio_accidente",
+                                0
+                            ]
+                        }
+                    }
+                }
+            }
         ]
         res_h = list(self._col.aggregate(pipeline_heridos))
         res_m = list(self._col.aggregate(pipeline_muertos))
@@ -145,39 +210,27 @@ class MongoDAO:
         return list(self._col.aggregate(pipeline))
 
     def accidentes_por_hora(self, filtros: dict = None) -> list:
+        """
+        Extrae la hora del campo hora_accidente.
+        Soporta formatos: '14:30:00', '2:30:00 PM', '02:30 PM', etc.
+        Se hace en Python para evitar pipelines frágiles en Mongo.
+        """
         pipeline = self._pipeline_base(filtros) + [
-            {
-                "$addFields": {
-                    "hora_num": {
-                        "$let": {
-                            "vars": {"partes": {"$split": ["$hora_accidente", ":"]}},
-                            "in": {
-                                "$cond": {
-                                    "if": {"$eq": [{"$toLower": {"$arrayElemAt": ["$$partes", 3]}}, "pm"]},
-                                    "then": {
-                                        "$cond": {
-                                            "if": {"$eq": [{"$toInt": {"$arrayElemAt": ["$$partes", 0]}}, 12]},
-                                            "then": 12,
-                                            "else": {"$add": [{"$toInt": {"$arrayElemAt": ["$$partes", 0]}}, 12]},
-                                        }
-                                    },
-                                    "else": {
-                                        "$cond": {
-                                            "if": {"$eq": [{"$toInt": {"$arrayElemAt": ["$$partes", 0]}}, 12]},
-                                            "then": 0,
-                                            "else": {"$toInt": {"$arrayElemAt": ["$$partes", 0]}},
-                                        }
-                                    },
-                                }
-                            },
-                        }
-                    }
-                }
-            },
-            {"$group": {"_id": "$hora_num", "total": {"$sum": "$cantidad_accidentes"}}},
-            {"$sort": {"_id": 1}},
+            {"$group": {"_id": "$hora_accidente", "total": {"$sum": "$cantidad_accidentes"}}},
         ]
-        return list(self._col.aggregate(pipeline))
+        resultados = list(self._col.aggregate(pipeline))
+
+        # Parsear hora en Python
+        from collections import defaultdict
+        conteo_por_hora = defaultdict(int)
+
+        for r in resultados:
+            hora_raw = r.get("_id") or ""
+            hora_num = _parsear_hora(hora_raw)
+            if hora_num is not None:
+                conteo_por_hora[hora_num] += r["total"]
+
+        return [{"_id": h, "total": conteo_por_hora[h]} for h in sorted(conteo_por_hora)]
 
     def maximos_victimas(self, filtros: dict = None) -> dict:
         pipeline_heridos = self._pipeline_base(filtros) + [
@@ -228,3 +281,48 @@ class MongoDAO:
 
     def cerrar(self):
         self._cliente.close()
+
+
+# ------------------------------------------------------------------ #
+#  HELPER EXTERNO                                                      #
+# ------------------------------------------------------------------ #
+
+def _parsear_hora(hora_raw: str) -> int | None:
+    """
+    Convierte strings de hora a entero 0-23.
+    Soporta todos estos formatos:
+      '01:30:00:am'  → formato de la API (4 partes con : )
+      '14:30:00'     → 24h sin am/pm
+      '2:30:00 PM'   → 12h con espacio
+      '02:30 PM'     → 12h corto con espacio
+    """
+    if not hora_raw or not isinstance(hora_raw, str):
+        return None
+
+    hora_raw = hora_raw.strip()
+    upper = hora_raw.upper()
+
+    # Detectar AM/PM (puede estar separado por ':' o por espacio)
+    es_pm = upper.endswith("PM")
+    es_am = upper.endswith("AM")
+
+    # Quitar el indicador AM/PM (con o sin separador previo)
+    for sufijo in [":AM", ":PM", " AM", " PM"]:
+        if upper.endswith(sufijo):
+            hora_raw = hora_raw[: -len(sufijo)].strip()
+            break
+
+    partes = hora_raw.split(":")
+    if not partes:
+        return None
+    try:
+        h = int(partes[0])
+    except ValueError:
+        return None
+
+    if es_pm and h != 12:
+        h += 12
+    elif es_am and h == 12:
+        h = 0
+
+    return h if 0 <= h <= 23 else None
