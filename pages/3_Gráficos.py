@@ -5,40 +5,54 @@ Página de visualizaciones interactivas con Plotly.
 
 import streamlit as st
 import plotly.express as px
-from mongo_dao import MongoDAO
-import transformers as tr
+
+from data.mongo_client import get_collection
+from data.repositories.accidentes_repo import (
+    contar_total,
+    obtener_anios_disponibles,
+    obtener_gravedades,
+    obtener_clases,
+)
+from data.repositories.analytics_repo import (
+    accidentes_por_anio,
+    accidentes_por_mes,
+    accidentes_por_tipo,
+    accidentes_por_gravedad,
+    accidentes_por_hora,
+    accidentes_por_dia_semana,
+    top_sitios_peligrosos,
+    maximos_victimas,
+)
+from core.transformers import (
+    preparar_por_anio,
+    preparar_por_mes,
+    preparar_por_tipo,
+    preparar_por_gravedad,
+    preparar_por_hora,
+    preparar_por_dia,
+    preparar_top_sitios,
+)
+from ui.styles import apply_global_styles
+from ui.components.metrics import render_sin_datos
 
 st.set_page_config(page_title="Gráficos · Accidentalidad", page_icon="📊", layout="wide")
 
-st.markdown("""
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
-    html, body, [class*="css"] { font-family: 'Space Grotesk', sans-serif; }
-    .stApp { background-color: #0d1117; color: #e6edf3; }
-    section[data-testid="stSidebar"] { background-color: #161b22; border-right: 1px solid #30363d; }
-    h1, h2, h3 { color: #e6edf3 !important; }
-    div[data-testid="metric-container"] { background: linear-gradient(135deg, #1c2128, #21262d); border: 1px solid #30363d; border-radius: 12px; padding: 16px 20px; }
-    div[data-testid="metric-container"] label { color: #8b949e !important; font-size: 0.75rem !important; text-transform: uppercase; }
-    div[data-testid="metric-container"] [data-testid="stMetricValue"] { color: #f0883e !important; font-size: 2rem !important; font-weight: 700; }
-    hr { border-color: #30363d; }
-</style>
-""", unsafe_allow_html=True)
+apply_global_styles()
 
 # ------------------------------------------------------------------ #
 #  CONEXIÓN                                                            #
 # ------------------------------------------------------------------ #
 @st.cache_resource(show_spinner=False)
-def obtener_dao():
-    return MongoDAO()
-
+def obtener_col():
+    return get_collection()
 try:
-    dao = obtener_dao()
+    col = obtener_col()
 except Exception as e:
     st.error(f"Error de conexión: {e}")
     st.stop()
 
-if dao.contar_total() == 0:
-    st.warning("⚠️ No hay datos. Ve a la página **📡 API** para cargarlos.")
+if contar_total(col) == 0:
+    render_sin_datos()
     st.stop()
 
 # ------------------------------------------------------------------ #
@@ -48,17 +62,17 @@ with st.sidebar:
     st.markdown("## 🔍 Filtros")
     st.markdown("---")
 
-    anios_disponibles = dao.obtener_anios_disponibles()
+    anios_disponibles = obtener_anios_disponibles(col)
     anios_sel = st.multiselect("Año(s)", options=anios_disponibles, default=anios_disponibles)
 
-    gravedades_opciones = dao.obtener_gravedades()
+    gravedades_opciones = obtener_gravedades(col)
     gravedades_sel = st.multiselect("Gravedad", options=gravedades_opciones, default=gravedades_opciones)
 
-    tipos_opciones = dao.obtener_clases()
+    tipos_opciones = obtener_clases(col)
     tipos_sel = st.multiselect("Clase de accidente", options=tipos_opciones, default=tipos_opciones)
 
     st.markdown("---")
-    st.markdown(f"<small style='color:#8b949e'>📦 {dao.contar_total():,} registros en BD</small>", unsafe_allow_html=True)
+    st.markdown(f"<small style='color:#8b949e'>📦 {contar_total(col):,} registros en BD</small>", unsafe_allow_html=True)
 
 filtros = {
     "anios": anios_sel if anios_sel else None,
@@ -84,9 +98,9 @@ st.markdown("---")
 # ------------------------------------------------------------------ #
 #  KPIs                                                                #
 # ------------------------------------------------------------------ #
-maximos = dao.maximos_victimas(filtros)
-total_acc = sum(r["total"] for r in dao.accidentes_por_anio(filtros))
-heridos_data = dao.accidentes_por_gravedad(filtros)
+maximos = maximos_victimas(col, filtros)
+total_acc = sum(r["total"] for r in accidentes_por_anio(col, filtros))
+heridos_data = accidentes_por_gravedad(col, filtros)
 heridos_total = next((r["total"] for r in heridos_data if r["_id"] == "Con heridos"), 0)
 muertos_total = next((r["total"] for r in heridos_data if r["_id"] == "Con muertos"), 0)
 
@@ -104,8 +118,8 @@ st.markdown("<br>", unsafe_allow_html=True)
 r1c1, r1c2 = st.columns(2)
 
 with r1c1:
-    st.markdown("### 📅 Accidentes por Año")
-    df = tr.preparar_por_anio(dao.accidentes_por_anio(filtros))
+    st.markdown("### 🚨 Accidentes por Año")
+    df = preparar_por_anio(accidentes_por_anio(col, filtros))
     if not df.empty:
         fig = px.bar(df, x="Año", y="total", color="total",
                      color_continuous_scale=["#21262d", "#f0883e"],
@@ -120,7 +134,7 @@ with r1c1:
 
 with r1c2:
     st.markdown("### 📆 Accidentes por Mes")
-    df = tr.preparar_por_mes(dao.accidentes_por_mes(filtros))
+    df = preparar_por_mes(accidentes_por_mes(col, filtros))
     if not df.empty:
         fig = px.line(df, x="Mes", y="total", markers=True,
                       labels={"total": "Accidentes"},
@@ -139,8 +153,8 @@ with r1c2:
 r2c1, r2c2 = st.columns(2)
 
 with r2c1:
-    st.markdown("### 🥧 % de Accidentes por Tipo")
-    df = tr.preparar_por_tipo(dao.accidentes_por_tipo(filtros))
+    st.markdown("### 📌 % de Accidentes por Tipo")
+    df = preparar_por_tipo(accidentes_por_tipo(col, filtros))
     if not df.empty:
         fig = px.pie(df, names="Tipo", values="total", hole=0.55,
                      color_discrete_sequence=px.colors.sequential.Oranges_r)
@@ -155,7 +169,7 @@ with r2c1:
 
 with r2c2:
     st.markdown("### 🕐 Accidentes por Hora del Día")
-    df = tr.preparar_por_hora(dao.accidentes_por_hora(filtros))
+    df = preparar_por_hora(accidentes_por_hora(col, filtros))
     if not df.empty:
         fig = px.bar(df, x="Etiqueta", y="total",
                      labels={"total": "Accidentes", "Etiqueta": "Hora"},
@@ -175,7 +189,7 @@ r3c1, r3c2 = st.columns(2)
 
 with r3c1:
     st.markdown("### ⚠️ Distribución por Gravedad")
-    df = tr.preparar_por_gravedad(dao.accidentes_por_gravedad(filtros))
+    df = preparar_por_gravedad(accidentes_por_gravedad(col, filtros))
     if not df.empty:
         colores_grav = {"Con muertos": "#f85149", "Con heridos": "#f0883e", "Solo daños": "#3fb950"}
         fig = px.bar(df, x="total", y="Gravedad", orientation="h",
@@ -191,7 +205,7 @@ with r3c1:
 
 with r3c2:
     st.markdown("### 📊 Accidentes por Día de Semana")
-    df = tr.preparar_por_dia(dao.accidentes_por_dia_semana(filtros))
+    df = preparar_por_dia(accidentes_por_dia_semana(col, filtros))
     if not df.empty:
         fig = px.bar(df, x="Día", y="total", color="total",
                      color_continuous_scale=["#21262d", "#f0883e"],
@@ -208,7 +222,7 @@ with r3c2:
 #  FILA 4: Top sitios                                                  #
 # ------------------------------------------------------------------ #
 st.markdown("### 📍 Top 10 Sitios con Mayor Accidentalidad")
-df = tr.preparar_top_sitios(dao.top_sitios_peligrosos(top_n=10, filtros=filtros))
+df = preparar_top_sitios(top_sitios_peligrosos(col, top_n=10, filtros=filtros))
 if not df.empty:
     fig = px.bar(df.sort_values("total"), x="total", y="Sitio", orientation="h",
                  color="total", color_continuous_scale=["#21262d", "#f85149"],

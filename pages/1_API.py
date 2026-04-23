@@ -7,49 +7,41 @@ y permite recargar los datos en MongoDB (borra todo y vuelve a insertar).
 import streamlit as st
 import requests
 import pandas as pd
-from mongo_dao import MongoDAO
-from extractor import recargar_todos_los_datos
-from scheduler import iniciar_scheduler
+
+from config.settings import settings
+from data.extractors.api_extractor import recargar_todos_los_datos
+from core.scheduler import iniciar_scheduler
+from ui.styles import apply_global_styles
 
 st.set_page_config(page_title="API · Accidentalidad", page_icon="📡", layout="wide")
 
-st.markdown("""
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
-    html, body, [class*="css"] { font-family: 'Space Grotesk', sans-serif; }
-    .stApp { background-color: #0d1117; color: #e6edf3; }
-    section[data-testid="stSidebar"] { background-color: #161b22; border-right: 1px solid #30363d; }
-    h1, h2, h3 { color: #e6edf3 !important; }
-    .stButton > button { background: linear-gradient(135deg, #f0883e, #d29922); color: #0d1117; border: none; border-radius: 8px; font-weight: 600; padding: 0.5rem 1.5rem; }
-    div[data-testid="metric-container"] { background: linear-gradient(135deg, #1c2128, #21262d); border: 1px solid #30363d; border-radius: 12px; padding: 16px 20px; }
-    div[data-testid="metric-container"] label { color: #8b949e !important; font-size: 0.75rem !important; text-transform: uppercase; }
-    div[data-testid="metric-container"] [data-testid="stMetricValue"] { color: #f0883e !important; font-size: 2rem !important; font-weight: 700; }
-    .info-box { background: #161b22; border: 1px solid #30363d; border-left: 4px solid #79c0ff; border-radius: 10px; padding: 1rem 1.5rem; margin-bottom: 1rem; }
-    .info-box p { color: #8b949e; margin: 0; font-size: 0.9rem; }
-    .info-box a { color: #79c0ff; }
-    .warning-box { background: #2d1f0e; border: 1px solid #f0883e; border-radius: 10px; padding: 1rem 1.5rem; margin-bottom: 1rem; }
-    .warning-box p { color: #f0883e; margin: 0; font-size: 0.9rem; }
-</style>
-""", unsafe_allow_html=True)
+apply_global_styles()
 
 # Scheduler
 if "scheduler_iniciado" not in st.session_state:
-    iniciar_scheduler(intervalo_horas=24)
+    iniciar_scheduler()
     st.session_state["scheduler_iniciado"] = True
 
-API_URL = "https://www.datos.gov.co/resource/yb9r-2dsi.json"
+API_URL = settings.api_url
 
-st.markdown("## 📡 API REST — datos.gov.co")
+st.markdown("## Extraccion de Datos")
 
 st.markdown(f"""
 <div class="info-box">
     <p>
+        <strong style="color:#e6edf3;">Descripcion:</strong> Consume los datos de la API publica de Datos Abiertos Colombia
+        <br>
         <strong style="color:#e6edf3;">Endpoint:</strong>
         <a href="{API_URL}" target="_blank">{API_URL}</a>
         <br>
-        <strong style="color:#e6edf3;">Dataset:</strong> Accidentalidad en Barranquilla (IPAT)
+        <strong style="color:#e6edf3;">Dataset:</strong> Accidentalidad en Barranquilla
         <br>
-        <strong style="color:#e6edf3;">Formato:</strong> JSON · Paginación con <code>$limit</code> y <code>$offset</code>
+        <strong style="color:#e6edf3;">Formato:</strong> JSON · Paginación mediante <code>$limit</code> y <code>$offset</code>
+        <br><br>
+        Este endpoint permite acceder a datos abiertos oficiales relacionados con la accidentalidad vial en Barranquilla.
+        <br>
+        La estructura paginada facilita la extracción eficiente de grandes volúmenes de información, 
+        lo cual es clave para su posterior procesamiento y análisis.
     </p>
 </div>
 """, unsafe_allow_html=True)
@@ -59,7 +51,7 @@ st.markdown("---")
 # ------------------------------------------------------------------ #
 #  PREVISUALIZACIÓN DE LA API                                          #
 # ------------------------------------------------------------------ #
-st.markdown("### 🔍 Previsualización — últimos registros de la API")
+st.markdown("### 🔍 Previsualización - Últimos registros de la API")
 
 col_limit, col_btn = st.columns([2, 1])
 with col_limit:
@@ -67,7 +59,7 @@ with col_limit:
 
 with col_btn:
     st.markdown("<br>", unsafe_allow_html=True)
-    consultar = st.button("🔄 Consultar API", use_container_width=True)
+    consultar = st.button("Consultar API", use_container_width=True)
 
 if consultar or "api_preview" in st.session_state:
     if consultar:
@@ -128,13 +120,14 @@ st.markdown("---")
 # ------------------------------------------------------------------ #
 #  RECARGA COMPLETA EN MONGODB                                         #
 # ------------------------------------------------------------------ #
-st.markdown("### 🍃 Recargar datos en MongoDB Atlas")
+st.markdown("### 🍃 Transferencia de datos a MongoDB Atlas")
 
 st.markdown("""
 <div class="warning-box">
     <p>
-        ⚠️ <strong>Este proceso elimina TODOS los documentos existentes</strong> en MongoDB
-        y vuelve a insertar los datos frescos de la API. Úsalo para sincronizar completamente
+        <strong>⚠️ Este proceso elimina TODOS los documentos existentes</strong> en MongoDB
+        <br>
+        Re-inserta los datos frescos de la API. Úsalo para sincronizar completamente
         sin duplicados. La operación puede tardar varios minutos.
     </p>
 </div>
@@ -142,7 +135,7 @@ st.markdown("""
 
 col_carga1, col_carga2 = st.columns([1, 2])
 with col_carga1:
-    cargar = st.button("🔄 Eliminar y recargar desde API", use_container_width=True)
+    cargar = st.button("Eliminar y recargar desde API", use_container_width=True)
 
 if cargar:
     barra = st.progress(0, text="Descargando datos de la API...")
@@ -164,6 +157,6 @@ if cargar:
         st.error(f"Error durante la recarga: {e}")
 
 st.markdown(
-    "<small style='color:#8b949e'>La actualización automática ocurre cada 24 horas via APScheduler (modo incremental).</small>",
+    "<small style='color:#8b949e'>La actualización automática ocurre cada 24 horas via APScheduler.</small>",
     unsafe_allow_html=True,
 )

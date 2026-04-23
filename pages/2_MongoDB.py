@@ -6,34 +6,30 @@ Paginación y filtros reales en el servidor (no sobre la página actual).
 
 import streamlit as st
 import pandas as pd
-from mongo_dao import MongoDAO
+
+from data.mongo_client import get_collection
+from data.repositories.accidentes_repo import (
+    resumen_coleccion,
+    obtener_anios_disponibles,
+    obtener_gravedades,
+    contar_con_filtros,
+    obtener_documentos_paginados,
+)
+from ui.styles import apply_global_styles
+from ui.components.metrics import render_kpis_principales, render_sin_datos
 
 st.set_page_config(page_title="MongoDB · Accidentalidad", page_icon="🍃", layout="wide")
 
-st.markdown("""
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
-    html, body, [class*="css"] { font-family: 'Space Grotesk', sans-serif; }
-    .stApp { background-color: #0d1117; color: #e6edf3; }
-    section[data-testid="stSidebar"] { background-color: #161b22; border-right: 1px solid #30363d; }
-    h1, h2, h3 { color: #e6edf3 !important; }
-    .stButton > button { background: linear-gradient(135deg, #f0883e, #d29922); color: #0d1117; border: none; border-radius: 8px; font-weight: 600; padding: 0.5rem 1.5rem; }
-    div[data-testid="metric-container"] { background: linear-gradient(135deg, #1c2128, #21262d); border: 1px solid #30363d; border-radius: 12px; padding: 16px 20px; }
-    div[data-testid="metric-container"] label { color: #8b949e !important; font-size: 0.75rem !important; text-transform: uppercase; }
-    div[data-testid="metric-container"] [data-testid="stMetricValue"] { color: #3fb950 !important; font-size: 2rem !important; font-weight: 700; }
-    .mongo-badge { display: inline-block; background: #1a3a1a; border: 1px solid #3fb950; border-radius: 20px; padding: 0.2rem 0.8rem; font-size: 0.8rem; color: #3fb950; }
-</style>
-""", unsafe_allow_html=True)
+apply_global_styles()
 
 # ------------------------------------------------------------------ #
 #  CONEXIÓN                                                            #
 # ------------------------------------------------------------------ #
 @st.cache_resource(show_spinner=False)
-def obtener_dao():
-    return MongoDAO()
-
+def obtener_col():
+    return get_collection()
 try:
-    dao = obtener_dao()
+    col = obtener_col()
 except Exception as e:
     st.error(f"Error de conexión a MongoDB: {e}")
     st.stop()
@@ -41,25 +37,19 @@ except Exception as e:
 # ------------------------------------------------------------------ #
 #  ENCABEZADO                                                          #
 # ------------------------------------------------------------------ #
-st.markdown("## 🍃 MongoDB Atlas — Colección de accidentes")
+st.markdown("## MongoDB Atlas — Colección de accidentes")
 st.markdown("<span class='mongo-badge'>● Conectado a MongoDB Atlas</span>", unsafe_allow_html=True)
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ------------------------------------------------------------------ #
 #  RESUMEN DE LA COLECCIÓN                                             #
 # ------------------------------------------------------------------ #
-resumen = dao.resumen_coleccion()
+resumen = resumen_coleccion(col)
 
 if resumen["total_documentos"] == 0:
-    st.warning("⚠️ La colección está vacía. Ve a la página **📡 API** para cargar datos.")
+    render_sin_datos()
     st.stop()
-
-st.markdown("### 📊 Resumen de la colección")
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Total documentos", f"{resumen['total_documentos']:,}")
-c2.metric("Años cubiertos", resumen["anios_cubiertos"])
-c3.metric("Total heridos acum.", f"{resumen['total_heridos']:,}")
-c4.metric("Total muertos acum.", f"{resumen['total_muertos']:,}")
+render_kpis_principales(resumen)
 
 st.markdown("---")
 
@@ -70,10 +60,10 @@ with st.sidebar:
     st.markdown("## 🔍 Filtros MongoDB")
     st.markdown("---")
 
-    anios = dao.obtener_anios_disponibles()
+    anios = obtener_anios_disponibles(col)
     anio_sel = st.selectbox("Filtrar por año", options=["Todos"] + [str(a) for a in anios])
 
-    gravedades = dao.obtener_gravedades()
+    gravedades = obtener_gravedades(col)
     gravedad_sel = st.selectbox("Filtrar por gravedad", options=["Todas"] + gravedades)
 
     por_pagina = st.select_slider("Registros por página", options=[25, 50, 100, 200], value=50)
@@ -84,7 +74,8 @@ with st.sidebar:
 st.markdown("### 🔎 Explorador de documentos")
 
 # Contar con filtros reales en Mongo para calcular la paginación correcta
-total_filtrado = dao.contar_con_filtros(
+total_filtrado = contar_con_filtros(
+    col,
     anio=anio_sel if anio_sel != "Todos" else None,
     gravedad=gravedad_sel if gravedad_sel != "Todas" else None,
 )
@@ -102,7 +93,8 @@ with col_pag2:
 
 # Obtener documentos con filtros reales aplicados en Mongo
 with st.spinner("Cargando documentos..."):
-    documentos = dao.obtener_documentos_paginados(
+    documentos = obtener_documentos_paginados(
+        col,
         pagina=pagina,
         por_pagina=por_pagina,
         anio=anio_sel if anio_sel != "Todos" else None,

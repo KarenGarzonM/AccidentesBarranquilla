@@ -1,25 +1,30 @@
 """
-transformers.py
-Responsabilidad: Convertir resultados de MongoDB en estructuras
-listas para graficar. No toca la BD ni Streamlit directamente.
+core/transformers.py
+
+Responsabilidad: convertir resultados de MongoDB en DataFrames
+listos para graficar. No toca la BD ni Streamlit directamente.
 """
 
 import pandas as pd
 
 MESES_ES = {
-    "January": "Enero", "February": "Febrero", "March": "Marzo",
-    "April": "Abril", "May": "Mayo", "June": "Junio",
-    "July": "Julio", "August": "Agosto", "September": "Septiembre",
-    "October": "Octubre", "November": "Noviembre", "December": "Diciembre",
+    "January": "Enero",   "February": "Febrero", "March": "Marzo",
+    "April": "Abril",     "May": "Mayo",          "June": "Junio",
+    "July": "Julio",      "August": "Agosto",     "September": "Septiembre",
+    "October": "Octubre", "November": "Noviembre","December": "Diciembre",
 }
 
 DIAS_ES = {
-    "Mon": "Lunes", "Tue": "Martes", "Wed": "Miércoles",
-    "Thu": "Jueves", "Fri": "Viernes", "Sat": "Sábado", "Sun": "Domingo",
+    "Mon": "Lunes", "Tue": "Martes",   "Wed": "Miércoles",
+    "Thu": "Jueves","Fri": "Viernes",  "Sat": "Sábado", "Sun": "Domingo",
 }
 
 
-def a_dataframe(lista: list, col_id: str = "_id", col_valor: str = "total") -> pd.DataFrame:
+def a_dataframe(
+    lista: list,
+    col_id: str = "_id",
+    col_valor: str = "total",
+) -> pd.DataFrame:
     if not lista:
         return pd.DataFrame(columns=[col_id, col_valor])
     df = pd.DataFrame(lista)
