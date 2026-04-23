@@ -133,7 +133,7 @@ if documentos:
 
     st.dataframe(
         df_display,
-        use_container_width=True,
+        width="stretch",
         height=500,
         column_config={
             "Heridos": st.column_config.NumberColumn(format="%d"),

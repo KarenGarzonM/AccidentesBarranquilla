@@ -128,7 +128,7 @@ with r1c1:
         fig.update_layout(**LAYOUT, height=320,
                           xaxis=dict(showgrid=False, color="#8b949e"),
                           yaxis=dict(showgrid=True, gridcolor="#21262d", color="#8b949e"))
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
     else:
         st.info("Sin datos para los filtros seleccionados.")
 
@@ -143,7 +143,7 @@ with r1c2:
         fig.update_layout(**LAYOUT, height=320,
                           xaxis=dict(showgrid=False, color="#8b949e", tickangle=-30),
                           yaxis=dict(showgrid=True, gridcolor="#21262d", color="#8b949e"))
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
     else:
         st.info("Sin datos para los filtros seleccionados.")
 
@@ -163,7 +163,7 @@ with r2c1:
         fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", font_color="#8b949e",
                           showlegend=True, legend=dict(font=dict(color="#8b949e")),
                           margin=dict(t=20, b=20), height=340)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
     else:
         st.info("Sin datos para los filtros seleccionados.")
 
@@ -178,7 +178,7 @@ with r2c2:
         fig.update_layout(**LAYOUT, height=340,
                           xaxis=dict(showgrid=False, color="#8b949e", tickangle=-45),
                           yaxis=dict(showgrid=True, gridcolor="#21262d", color="#8b949e"))
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
     else:
         st.info("Sin datos para los filtros seleccionados.")
 
@@ -199,7 +199,7 @@ with r3c1:
         fig.update_layout(**LAYOUT, height=280, showlegend=False,
                           xaxis=dict(showgrid=True, gridcolor="#21262d", color="#8b949e"),
                           yaxis=dict(showgrid=False, color="#8b949e"))
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
     else:
         st.info("Sin datos para los filtros seleccionados.")
 
@@ -214,7 +214,7 @@ with r3c2:
         fig.update_layout(**LAYOUT, height=280,
                           xaxis=dict(showgrid=False, color="#8b949e"),
                           yaxis=dict(showgrid=True, gridcolor="#21262d", color="#8b949e"))
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
     else:
         st.info("Sin datos para los filtros seleccionados.")
 
